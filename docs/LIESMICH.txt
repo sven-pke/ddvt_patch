@@ -1,0 +1,148 @@
+ddvt_patch 0.1.0 - HDR-Metadaten in Matroska (AV1 und HEVC)
+
+Starten:
+  ddvt_patch.exe                 Doppelklick oeffnet das FENSTER
+  ddvt_patch.exe gui "Film.mkv"  ... direkt mit einer Datei
+  ddvt_patch.exe ui "Film.mkv"   der Bildschirm im Terminal (Alternative)
+  ddvt_patch.exe --help          die Kommandozeile
+
+Fenster: oben die Datei ("Open...", Datei ins Fenster ziehen oder Pfad
+einfuegen; gruen = gefunden, rot = gibt es nicht), links, was sie sagt,
+unten das Log, und zwei Modi:
+
+  AUTOPILOT: unter "Reference" auf die Vorlage zeigen (Master oder
+    Quelldatei), "Output" pruefen (sonst NAME.fixed.mkv daneben),
+    bei Bedarf die Haken "Take Dolby Vision" / "Take HDR10+" ausschalten
+    (dann wird diese Art NICHT aus der Vorlage uebernommen, der Rest
+    schon; Kommandozeile: --no-rpu bzw. --no-hdr10plus). Achtung, das ist
+    etwas anderes als "Remove" im Manual-Modus: hier wird nichts
+    entfernt, es wird nur nichts uebernommen.
+    "1 Analyse" -> lesen, was fehlt und ob die Framerate stimmt ->
+    "2 GO fix". Die Eingabe bleibt unangetastet. Uebernommen wird nur,
+    was der Datei fehlt und die Vorlage hat (Dolby Vision, HDR10+,
+    MaxCLL/MaxFALL, Mastering Display); die Framerate wird auf die der
+    Vorlage gesetzt, wenn sie falsch ist, fehlt oder nur im Kopf stimmt.
+    Die Active Area der RPUs (Level 5, die schwarzen Balken) wird wie in
+    der alten Kette an den PIXELN gemessen: ffmpeg dekodiert fuenf Bilder
+    ueber den Film verteilt, die Balken werden gezaehlt, die RPUs darauf
+    gesetzt ("Bars measured on the pixels: L0 R0 T277 B277"). Dafuer muss
+    ffmpeg.exe erreichbar sein: neben ddvt_patch.exe, im PATH oder ueber
+    DDVT_FFMPEG. Ohne ffmpeg wird aus den Leinwandgroessen gerechnet
+    (Bild mittig angenommen), das Log sagt es dann.
+    Die Frames werden aus erstem und letztem Bild gezaehlt. Stimmen die
+    Zahlen nicht ueberein, MISST das Tool am Bild, welcher Frame der
+    Vorlage der Frame 0 deiner Datei ist ("Alignment: reference frame 24
+    is frame 0 here") und verschiebt RPUs UND HDR10+ um genau so viel.
+    Dafuer werden an sechs Stellen im Film kleine Graubilder dekodiert und
+    die Szenenwechsel verglichen; das dauert etwa eine Minute. Laesst sich
+    der Versatz nicht eindeutig bestimmen, BRICHT der Autopilot ab, statt
+    zu raten - Metadaten auf den falschen Bildern sind schlimmer als
+    keine. Eigener Befehl zum Nachsehen: ddvt_patch align "Datei.mkv"
+    --from "Vorlage.mkv". Mit --frame-offset N gibst du den Wert selbst
+    vor, mit --no-align nimmst du an, dass beide gleich beginnen.
+    Photon Noise und Frame-Versatz liegen zugeklappt unter "More".
+    Kommandozeile: auto "Film.mkv" --from "\\nas\...\Master.mkv" [--dry-run]
+
+  MANUAL: alle Optionen in einem Formular. "Write" = neue Datei oder
+    "into the file" (an Ort und Stelle: nur statische Werte oder die
+    Framerate, rueckgaengig per "Undo"). Dann Per-Frame-Metadaten
+    (Reference / RPU-Datei / HDR10+-JSON), statische Werte, Grain,
+    Framerate, "Remove", zugeklappt das Seltene. Das Fenster sucht sich
+    den Befehl selbst aus: in die Datei = patch oder retime (Haken
+    "Dry run" neben GO), neue Datei = rewrite mit allem auf einmal.
+    "Extract now" unter "Export" schreibt RPU-Datei und HDR10+-JSON.
+
+  Unter den Knoepfen steht in einem Satz, was gleich passiert; sind sie
+  grau, steht rot daneben, was fehlt. Vor jedem Schreiben in die Datei
+  und vor dem Ueberschreiben einer Ausgabe fragt das Programm nach.
+  Liegt eine .ddvtbak neben der Datei, gibt es "Undo the last in-place
+  change". Maus ueber irgendetwas: Erklaerung. Jeder Lauf beginnt im Log
+  mit seiner Kommandozeile ("Copy command line"). Nach einem Lauf, der
+  eine neue Datei schreibt: "Open the result in this window".
+
+Framerate (der Versatz in Resolve):
+  - Ein AV1-Bitstrom traegt keine Framerate, im MKV zaehlt allein die
+    DefaultDuration. Der IVF-Zwischenschritt (ffmpeg -> mkvmerge) verliert
+    sie: entweder fehlt sie ganz (Player raten 25 fps) oder sie wird aus
+    Millisekunden-Zeitstempeln geschaetzt (23,953 statt 23,976) und vererbt
+    sich bei jedem Remux. Inspect zeigt es im Abschnitt "Timing".
+  - Das Raster wird immer aus den Zeitstempeln GEMESSEN, nicht dem Kopf
+    geglaubt: eine Datei, deren Angabe nachtraeglich korrigiert wurde
+    (mkvpropedit, Remux mit richtiger Rate), deren Zeitstempel aber auf
+    23,953 liegen, wird erkannt ("the timestamps follow 23.953 fps
+    although the track states 23.976") und repariert.
+  - Reiter "Retime" (oder retime --fps 23.976): setzt die Datei an Ort und
+    Stelle auf das richtige Raster, rueckgaengig per Restore. Dateien mit
+    CRC-32 in den Clustern (ffmpeg-Mux) verweigert es; dafuer gibt es im
+    Reiter "Rewrite" das Feld "Frame rate" (rewrite --fps 23.976), das
+    dasselbe beim Kopieren erledigt. "Auto" macht es von selbst.
+  - Beim Muxen mit mkvmerge: --default-duration 0:24000/1001p mitgeben.
+
+Was das Programm NICHT tut (Sicherheiten):
+  - Es schreibt nie ueber eine Datei, die es gerade liest: Ausgabe = Eingabe
+    oder = Referenz (oder = RPU-/HDR10+-Datei) wird abgelehnt. Auch wenn der
+    Pfad anders geschrieben ist (Gross/klein, / statt \, Ordnerschritt) -
+    verglichen wird ueber das Dateisystem, nicht ueber die Zeichenkette.
+  - Ein Rewrite baut das Ergebnis als NAME.mkv.ddvtpart und benennt es erst
+    um, wenn es fertig ist. Ein abgebrochener Lauf hinterlaesst also nie
+    eine MKV-Datei, die vollstaendig AUSSIEHT und es nicht ist. Im Fenster
+    steht dann "stopped by you" und ein Knopf loescht den Rest.
+  - Vor dem Rewrite wird geprueft, ob genug Platz frei ist.
+
+Hinweise:
+  - In die Datei schreiben beginnt als Dry-Run (Haken entfernen zum
+    Schreiben); jeder echte Patch/Retime legt <Datei>.ddvtbak an, "Undo"
+    bzw. restore macht ihn rueckgaengig.
+  - Manual mit "Reference" in eine neue Datei = dein Fall von Hand: AV1-Film
+    oben, HEVC-Master als Reference, Grain auf "photon noise" -> RPU +
+    HDR10+ + statische Werte kommen aus dem Master, die Active Area wird
+    an die Leinwand angepasst. Was die Referenz mitbringt, ERSETZT das
+    Vorhandene je Art (RPU, HDR10+, statische Werte). Haken "Only missing":
+    nur das uebernehmen, was die Zieldatei noch nicht hat - fehlt z.B.
+    HDR10+, wird der Master dafuer komplett gelesen; hat die Datei schon
+    alles, wird er gar nicht gelesen.
+  - RPU-Quelle darf auch eine Dolby-Vision-XML sein (Resolve/Gradinghaus,
+    Schnitte und Trims statt fertiger Einheiten): im Manual-Modus unter
+    "RPU or XML" auswaehlen, auf der Kommandozeile rewrite --rpu Datei.xml.
+    Die RPUs werden daraus fuer das Bild DIESER Datei erzeugt - die
+    Leinwandgroesse fuer die Active Area kommt aus dem Video selbst, du
+    musst nichts eintippen. Die alte Kette rief dafuer
+    "dovi_tool generate --xml ... --canvas-width ... --canvas-height ..."
+    auf; nachgeprueft: das Ergebnis ist Byte fuer Byte dasselbe.
+    Beschreibt die XML mehr Frames als die Datei hat, steht das als WARNING
+    im Log (der Ueberhang wird ans ENDE gelegt; faengt deine Datei spaeter
+    an, --frame-offset N mitgeben). Die EditRate der XML wird mit der
+    Framerate der Datei verglichen - Shots sind Bildnummern und lassen sich
+    nicht dehnen. Eine unvollstaendige oder kaputte XML wird mit einem Satz
+    abgelehnt, nicht mit einem Absturz.
+  - Filmkorn: "Grain" auf "photon noise" (Staerke ueber "Grain ISO") ODER auf
+    "table" und unter "Grain table" eine filmgrn1-Tabelle waehlen (aomenc,
+    grav1synth inspect/diff). Kommandozeile: --grain-iso N bzw.
+    --grain-table Datei.txt. Beides nachgemessen: der fertige AV1-Bitstrom
+    ist Byte fuer Byte derselbe wie bei grav1synth generate bzw. apply.
+    Endet die Tabelle vor dem Film, steht das als WARNING im Log - der Rest
+    bekommt dann gar kein Korn.
+  - Bloecke in der Videospur, die gar kein Video sind (was ein Remux
+    hinterlaesst, der eine Spur entfernt, ihre Daten aber nicht - z.B.
+    zlib-gepackte Untertitel unter der Videospurnummer): die Datei wird
+    abgelehnt und im Log steht, was der Block wirklich ist und wo er sitzt.
+    Zwei Wege raus: --drop-alien-blocks laesst sie weg, oder vorher
+    "mkvmerge -o sauber.mkv kaputt.mkv" (dauert Sekunden).
+  - Fehlt der Datei ein Bild, das die Timeline hat (z.B. 14403 in Resolve,
+    14402 in der Datei), sagt das Log WELCHER Rasterplatz leer ist. Die
+    Metadaten werden ueber den Platz im Raster zugeordnet, nicht durchgezaehlt
+    - alle Bilder nach der Luecke behalten also ihre eigenen Einheiten.
+  - Inspect zeigt bei Dolby-Vision-Dateien "Active area": die Level-5-Werte
+    der RPU neben den gemessenen Balken, mit Hinweis, wenn sie abweichen
+    (das alte "CHECK RPU CROPPING VALUES").
+  - Audioversatz: ein in MKVToolNix gesetzter Delay steckt in den
+    Zeitstempeln der Tonspur, und die fasst kein Befehl an - auch retime
+    und rewrite --fps verschieben nur das Video auf sein Raster, Bild 0
+    bleibt, wo es war. "What the file says" zeigt unter Timing je Spur
+    den ersten Zeitstempel ("first 123 ms").
+  - Waehrend die Referenz gelesen wird, laeuft "reading reference x / y MiB"
+    (uebers Netz einige Minuten). Stimmen die Frame-Zahlen nicht ueberein,
+    steht vor dem Schreiben eine rote WARNING im Log.
+  - Das Log zeigt zuerst die echte Kommandozeile jedes Laufs.
+
+Details: README.md

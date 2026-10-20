@@ -1,0 +1,46 @@
+[package]
+name = "ddvt_patch"
+version = "0.1.0"
+edition = "2021"
+description = "In-place metadata patcher for large Matroska HDR/Dolby Vision files"
+license = "MIT"
+
+[[bin]]
+name = "ddvt_patch"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "wrap_help"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Dolby Vision RPU and HDR10+ metadata, from the forks with AV1 support.
+dolby_vision = { git = "https://github.com/sven-pke/dovi_tool", rev = "fdd96eaf16cbe13a7623b6768df21a4a4bdc4e40", features = ["xml"] }
+hdr10plus = { git = "https://github.com/sven-pke/hdr10plus_tool", rev = "d387520c65aa80fd67a82328b261a8fbd302954f", features = ["json", "hevc"] }
+
+# Film grain: photon noise generation, and what the vendored parser needs.
+av1-grain = "0.2"
+nom = "7.1"
+bitvec = "1.0"
+arrayvec = "0.7"
+bit = "0.1"
+num_enum = "0.5"
+num-traits = "0.2"
+log = "0.4"
+ratatui = "0.30.2"
+crossterm = "0.29.0"
+fs2 = "0.4"
+eframe = "0.36.1"
+rfd = "0.17.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Console", "Win32_Foundation"] }
+
+[dev-dependencies]
+egui_kittest = "0.36"
